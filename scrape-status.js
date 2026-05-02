@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   if (!runId) return res.status(400).json({ error: 'runId required' });
 
   const APIFY_KEY = process.env.APIFY_KEY;
-  if (!APIFY_KEY) return res.status(500).json({ error: 'APIFY_KEY not configured on server' });
+  if (!APIFY_KEY) return res.status(500).json({ error: 'APIFY_KEY not configured' });
 
   try {
     const response = await fetch(
@@ -27,4 +27,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-}
+};
