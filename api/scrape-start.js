@@ -18,11 +18,9 @@ module.exports = async function handler(req, res) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          usernames: [username],
+          directUrls: [`https://www.instagram.com/${username}/`],
           resultsType: 'posts',
           resultsLimit: 50,
-          searchType: 'user',
-          searchLimit: 1,
           addParentData: true
         })
       }
