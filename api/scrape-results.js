@@ -11,23 +11,36 @@ module.exports = async function handler(req, res) {
   if (!APIFY_KEY) return res.status(500).json({ error: 'APIFY_KEY not configured' });
 
   try {
-    const url = `https://api.apify.com/v2/acts/apify~instagram-scraper/runs/${runId}/dataset/items?token=${APIFY_KEY}&limit=100`;
-    const response = await fetch(url);
-    const rawText = await response.text();
+    // Step 1: Get run details to find the datasetId
+    const runRes = await fetch(
+      `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_KEY}`
+    );
+    const runData = await runRes.json();
+    const datasetId = runData?.data?.defaultDatasetId;
 
-    if (!response.ok) {
-      return res.status(500).json({ error: 'Apify dataset fetch failed', status: response.status, detail: rawText.slice(0, 500) });
+    if (!datasetId) {
+      return res.status(500).json({ error: 'Could not get datasetId', runData });
+    }
+
+    // Step 2: Fetch items from the dataset directly
+    const dataRes = await fetch(
+      `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_KEY}&limit=100`
+    );
+    const rawText = await dataRes.text();
+
+    if (!dataRes.ok) {
+      return res.status(500).json({ error: 'Dataset fetch failed', status: dataRes.status, detail: rawText.slice(0, 500) });
     }
 
     let items;
     try {
       items = JSON.parse(rawText);
     } catch(e) {
-      return res.status(500).json({ error: 'Failed to parse Apify response', raw: rawText.slice(0, 500) });
+      return res.status(500).json({ error: 'Failed to parse response', raw: rawText.slice(0, 300) });
     }
 
     if (!items || !items.length) {
-      return res.status(404).json({ error: 'Empty dataset', runId, itemCount: 0 });
+      return res.status(404).json({ error: 'Empty dataset', datasetId });
     }
 
     // Find profile item
@@ -70,13 +83,13 @@ module.exports = async function handler(req, res) {
       reelsInLastSixMonths: posts.length,
       debug: {
         totalItems: items.length,
+        datasetId,
         itemTypes: [...new Set(items.map(i => i.type || i.productType || 'unknown'))],
-        sampleKeys: Object.keys(items[0] || {}).slice(0, 20),
-        hasFollowers: !!profileItem.followersCount
+        sampleKeys: Object.keys(items[0] || {}).slice(0, 20)
       }
     });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message, stack: err.stack });
+    return res.status(500).json({ error: err.message });
   }
 };
