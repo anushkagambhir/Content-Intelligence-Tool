@@ -18,46 +18,61 @@ module.exports = async function handler(req, res) {
     if (!response.ok) return res.status(500).json({ error: 'Could not fetch dataset' });
 
     const items = await response.json();
-    if (!items.length) return res.status(404).json({ error: 'No data returned — check Instagram URL or Apify credits' });
+    if (!items || !items.length) return res.status(404).json({ error: 'No data returned — check Instagram URL or Apify credits' });
 
-    const profile = items[0];
-    const allVideos = items.filter(i =>
-      i.type === 'Video' ||
-      i.productType === 'clips' ||
-      (i.videoPlayCount && i.videoPlayCount > 0)
-    );
+    // Find profile item — has followersCount
+    const profileItem = items.find(i => i.followersCount !== undefined) || {};
 
+    // Find owner info from any post
+    const anyPost = items.find(i => i.ownerUsername || (i.owner && i.owner.username));
+    const ownerUsername = profileItem.username || profileItem.ownerUsername ||
+      (anyPost && (anyPost.ownerUsername || (anyPost.owner && anyPost.owner.username))) || '';
+    const followersCount = profileItem.followersCount || 0;
+    const fullName = profileItem.fullName || '';
+    const isVerified = profileItem.verified || profileItem.isVerified || false;
+
+    // Filter to posts only (not profile items)
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const recentReels = (allVideos.length ? allVideos : items)
-      .filter(p => new Date(p.timestamp || p.takenAt || 0) >= sixMonthsAgo)
+    const posts = items
+      .filter(i => i.shortCode || i.url) // actual posts have shortCode
+      .filter(i => {
+        const d = new Date(i.timestamp || i.takenAt || 0);
+        return d >= sixMonthsAgo;
+      })
       .slice(0, 50)
-      .map(p => ({
-        id: p.id || p.shortCode,
-        shortCode: p.shortCode,
-        caption: (p.caption || p.text || '').slice(0, 600),
-        videoPlayCount: p.videoPlayCount || p.videoViewCount || 0,
-        likesCount: p.likesCount || p.likes || 0,
-        commentsCount: p.commentsCount || p.comments || 0,
-        timestamp: p.timestamp || p.takenAt,
-        videoDuration: p.videoDuration || p.duration || 0,
-        hashtags: (p.hashtags || []).slice(0, 15),
-        mentions: (p.mentions || []).slice(0, 5),
-        isPaidPartnership: p.isPaidPartnership || false,
-        url: p.url || `https://www.instagram.com/p/${p.shortCode}/`
+      .map(i => ({
+        id: i.id || i.shortCode,
+        shortCode: i.shortCode,
+        caption: (i.caption || i.text || '').slice(0, 600),
+        videoPlayCount: i.videoPlayCount || i.videoViewCount || i.playsCount || 0,
+        likesCount: i.likesCount || i.likes || 0,
+        commentsCount: i.commentsCount || i.comments || 0,
+        timestamp: i.timestamp || i.takenAt,
+        videoDuration: i.videoDuration || i.duration || 0,
+        hashtags: (i.hashtags || []).slice(0, 15),
+        mentions: (i.mentions || []).slice(0, 5),
+        isPaidPartnership: i.isPaidPartnership || false,
+        type: i.type || i.productType,
+        url: i.url || (i.shortCode ? `https://www.instagram.com/p/${i.shortCode}/` : '')
       }));
 
     return res.status(200).json({
       profile: {
-        username: profile.ownerUsername || profile.username,
-        fullName: profile.fullName,
-        biography: profile.biography,
-        followersCount: profile.followersCount || 0,
-        isVerified: profile.isVerified || false
+        username: ownerUsername,
+        fullName,
+        followersCount,
+        isVerified
       },
-      reels: recentReels,
-      reelsInLastSixMonths: recentReels.length
+      reels: posts,
+      reelsInLastSixMonths: posts.length,
+      debug: {
+        totalItems: items.length,
+        itemTypes: [...new Set(items.map(i => i.type || i.productType || 'unknown'))],
+        hasFollowers: followersCount > 0,
+        sampleKeys: Object.keys(items[0] || {}).slice(0, 20)
+      }
     });
 
   } catch (err) {
